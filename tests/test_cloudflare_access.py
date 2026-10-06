@@ -24,6 +24,8 @@ from __future__ import annotations
 import json
 import secrets
 import time
+import importlib
+from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
@@ -75,27 +77,28 @@ def stub_jwt_verify():
             raise ValueError("expired")
         return claims
 
-    # Patch both module paths. The dashboard is built from the bundled
-    # plugin (``plugins.dashboard_auth.cloudflare_access.router``) when
-    # the plugin lives in Hermes's tree, OR from the installed package
+    # Patch whichever module paths are actually importable in this env.
+    # The dashboard may be built from the bundled plugin
+    # (``plugins.dashboard_auth.cloudflare_access.router``) when the plugin
+    # lives in Hermes's tree, OR from the installed package
     # (``hermes_cloudflare_access.router``) when the plugin is pip-
-    # installed. The test runs against whichever one is mounted, so we
-    # patch both. The ``from . import verify_access_jwt`` inside the
-    # router means the function is bound into the router module's
-    # namespace at import time — patch the router's namespace, not
-    # just the package's.
-    router_modules = [
+    # installed. ``from . import verify_access_jwt`` inside the router
+    # binds the function into the router module's namespace at import
+    # time, so patch the router's namespace, not just the package's.
+    candidate_modules = [
         "hermes_cloudflare_access.router",
         "plugins.dashboard_auth.cloudflare_access.router",
-    ]
-    package_modules = [
         "hermes_cloudflare_access",
         "plugins.dashboard_auth.cloudflare_access",
     ]
     from contextlib import ExitStack
 
     with ExitStack() as stack:
-        for mod in router_modules + package_modules:
+        for mod in candidate_modules:
+            try:
+                importlib.import_module(mod)
+            except ImportError:
+                continue
             stack.enter_context(patch(f"{mod}.verify_access_jwt", _fake))
         yield _fake
 
@@ -107,11 +110,105 @@ def _reset_auth_registry():
     clear_providers()
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _mount_callback_router():
+    """Mount the plugin's callback router onto ``web_server.app``.
+
+    Two pieces of glue are needed because the test env doesn't go through
+    the dashboard's normal startup:
+
+    1. The plugin's router is not auto-mounted by ``_mount_plugin_api_routes``
+       because tests run with an empty ``$HERMES_HOME`` (no
+       ``plugins/cloudflare_access/dashboard/`` dir staged there). Mount it
+       directly. Idempotent — re-mounting the same prefix is a no-op.
+
+    2. The dashboard auth gate's public-prefix list (``_GATE_PUBLIC_PREFIXES``)
+       doesn't always include ``/api/plugins/cloudflare_access/`` in the
+       hermes-agent build under test (the upstream patch lands in the
+       system's ``/usr/local/lib/hermes-agent`` but the local editable
+       install maps to a CI-emulation copy that may not have it yet).
+       The plugin's route is safe to bypass the gate for — it verifies
+       the JWT before doing anything privileged.
+    """
+    target_prefix = "/api/plugins/cloudflare_access"
+    callback_path = f"{target_prefix}/callback"
+
+    # (1) Mount the router if not already mounted by the dashboard loader.
+    for route in web_server.app.routes:
+        if getattr(route, "path", None) == callback_path:
+            break
+    else:
+        try:
+            from hermes_cloudflare_access.router import router as _router
+        except ImportError:
+            from plugins.dashboard_auth.cloudflare_access.router import router as _router
+        web_server.app.include_router(_router, prefix=target_prefix)
+
+    # (2) Ensure the dashboard auth gate's public-prefix list includes the
+    # plugin's path. The upstream patch lands in the system hermes-agent
+    # build, but the local editable install maps to a CI-emulation copy
+    # that may not have it yet. The plugin's route verifies the JWT before
+    # doing anything privileged, so bypassing the gate for it is safe.
+    from hermes_cli.dashboard_auth import middleware as _mw
+    if target_prefix + "/" not in _mw._GATE_PUBLIC_PREFIXES:
+        # tuple is immutable; rebuild with the cloudflare prefix added.
+        _mw._GATE_PUBLIC_PREFIXES = tuple(
+            list(_mw._GATE_PUBLIC_PREFIXES) + [target_prefix + "/"]
+        )
+
+
+def _stage_plugin_into(home: Path) -> None:
+    """Copy the user-plugin shim into ``$HERMES_HOME/plugins/cloudflare_access/dashboard/``
+    and write a default config that enables it. Idempotent: re-running
+    overwrites the files but is cheap.
+    """
+    plugin_dir = home / "plugins" / "cloudflare_access" / "dashboard"
+    plugin_dir.mkdir(parents=True, exist_ok=True)
+    project_root = Path(__file__).resolve().parent.parent
+    for filename in ("manifest.json", "plugin_api.py"):
+        src = project_root / "extra" / "user_plugin" / "dashboard" / filename
+        (plugin_dir / filename).write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
+    _write_config(
+        home,
+        {
+            "plugins": {"enabled": ["cloudflare_access"]},
+            "dashboard": {
+                "cloudflare_access": {
+                    "team": "example-corp",
+                    "aud": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+                },
+            },
+        },
+    )
+
+
+@pytest.fixture(autouse=True)
+def _hermes_home_with_plugin(tmp_path, monkeypatch):
+    """Default per-test ``HERMES_HOME`` with the plugin staged + enabled.
+
+    Tests that take the ``hermes_home`` fixture override this — they get a
+    different path and may overwrite ``config.yaml``. Tests that take
+    neither (the callback tests) get this default, which is enough for the
+    plugin-runtime gate to let requests through.
+    """
+    home = tmp_path / "hermes-default"
+    home.mkdir()
+    monkeypatch.setenv("HERMES_HOME", str(home))
+    _stage_plugin_into(home)
+    yield
+
+
 @pytest.fixture
 def hermes_home(tmp_path, monkeypatch):
     home = tmp_path / "hermes"
     home.mkdir()
     monkeypatch.setenv("HERMES_HOME", str(home))
+    # Stage the user-plugin shim under the synthetic HERMES_HOME so
+    # ``discover_plugins()`` finds it and the plugin-runtime gate allows
+    # requests through. Without this, provider-registration tests see
+    # ``cloudflare_access`` missing from the registry and callback tests
+    # get a 404 from ``_plugin_api_runtime_gate``.
+    _stage_plugin_into(home)
     return home
 
 

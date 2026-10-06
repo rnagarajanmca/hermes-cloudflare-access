@@ -45,6 +45,25 @@ jobs:
           cp -r src/hermes_cloudflare_access/* \
             /tmp/hermes-agent/plugins/dashboard_auth/cloudflare_access/
 
+      - name: Apply the middleware allowlist patch
+        # The CI's fresh hermes-agent clone doesn't include the
+        # /api/plugins/cloudflare_access/ entry in
+        # hermes_cli/dashboard_auth/middleware.py:_GATE_PUBLIC_PREFIXES.
+        # Without this edit, the auth gate bounces every request to
+        # /api/plugins/cloudflare_access/* with a 401 "no_cookie" before
+        # the route handler ever runs. The patch is the same one users
+        # apply when installing the plugin on a real Hermes host — see
+        # examples/middleware-public-prefix.patch in the repo.
+        # The plugin's README documents this requirement; if/when Hermes
+        # exposes a plugin-contributed public-path API upstream, both
+        # the patch and this CI step go away.
+        run: |
+          patch -d /tmp/hermes-agent -p1 < examples/middleware-public-prefix.patch
+          # Verify the patch applied (sanity check, fails CI loudly if not).
+          grep -q "/api/plugins/cloudflare_access/" \
+            /tmp/hermes-agent/hermes_cli/dashboard_auth/middleware.py \
+            || (echo "::error::middleware patch did not apply" && exit 1)
+
       - name: Install plugin with test extras
         # `.[test]` pulls in pytest, pytest-asyncio, build, ruff.
         run: pip install -e ".[test]"
