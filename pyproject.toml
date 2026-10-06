@@ -41,6 +41,17 @@ dependencies = [
     "pyjwt>=2.8",
 ]
 
+[project.optional-dependencies]
+test = [
+    "pytest>=7.0",
+    "pytest-asyncio>=0.21",
+    "build>=1.0",
+    "ruff>=0.4",
+]
+dev = [
+    "hermes-agent @ git+https://github.com/NousResearch/hermes-agent.git@a31be48030f60383bf4c1d96ba46bd4b48430218",
+]
+
 [project.urls]
 "Source" = "https://github.com/rnagarajanmca/hermes-cloudflare-access"
 "Bug Tracker" = "https://github.com/rnagarajanmca/hermes-cloudflare-access/issues"

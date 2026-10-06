@@ -35,7 +35,6 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import RedirectResponse
-
 from hermes_cli.dashboard_auth import list_providers
 from hermes_cli.dashboard_auth.cookies import (
     detect_https,
@@ -112,14 +111,18 @@ async def callback(request: Request, next: str = "") -> Any:
     # 3. Verify signature, aud, iss, exp, nbf.
     try:
         claims = verify_access_jwt(
-            token, team=provider._team, aud=provider._aud,  # type: ignore[attr-defined]
+            token,
+            team=provider._team,
+            aud=provider._aud,  # type: ignore[attr-defined]
         )
     except Exception as exc:  # noqa: BLE001 — surface the reason
         _log.warning(
-            "dashboard-auth-cf-access: JWT verification failed: %s", exc,
+            "dashboard-auth-cf-access: JWT verification failed: %s",
+            exc,
         )
         raise HTTPException(
-            status_code=401, detail=f"Cloudflare Access JWT invalid: {exc}",
+            status_code=401,
+            detail=f"Cloudflare Access JWT invalid: {exc}",
         )
 
     # 4. Mint a Session using the provider's own HMAC scheme.
@@ -127,7 +130,8 @@ async def callback(request: Request, next: str = "") -> Any:
     email = str(claims.get("email", ""))
     if not user_id:
         raise HTTPException(
-            status_code=401, detail="JWT missing 'sub' claim",
+            status_code=401,
+            detail="JWT missing 'sub' claim",
         )
     session = provider._mint_session(user_id=user_id, email=email)  # type: ignore[attr-defined]
 
@@ -146,6 +150,8 @@ async def callback(request: Request, next: str = "") -> Any:
     )
     _log.info(
         "dashboard-auth-cf-access: minted session for email=%s sub=%s -> %s",
-        email, user_id, target,
+        email,
+        user_id,
+        target,
     )
     return response

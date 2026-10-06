@@ -1,0 +1,21 @@
+# Dependabot keeps Python deps current. Bumps the `test` and `dev` extras
+# in pyproject.toml. Hermes-agent is pinned to a specific commit in the
+# dev extra — dependabot will try to bump it; either accept (if you've
+# tested compatibility) or close the PR to keep the pin.
+version: 2
+updates:
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      python-deps:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: "deps"
+    labels:
+      - "dependencies"
+    # Don't auto-merge — review the changelog and re-run the smoke-import
+    # test before merging.
+    open-pull-requests-limit: 5

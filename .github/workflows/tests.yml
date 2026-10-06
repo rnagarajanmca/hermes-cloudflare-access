@@ -5,11 +5,13 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 jobs:
   test:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         python-version: ["3.10", "3.11", "3.12"]
 
@@ -20,17 +22,85 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+          cache: pip
 
-      - name: Install hermes-agent (test dependency)
+      - name: Install hermes-agent (test dependency, pinned to a known-good commit)
+        # We pin to a specific commit, not @main, so CI isn't a moving target.
+        # Bump this when the plugin's compatibility assumptions change.
         run: |
-          git clone --depth 1 https://github.com/NousResearch/hermes-agent.git
-          pip install -e ./hermes-agent
+          git clone --depth 1 https://github.com/NousResearch/hermes-agent.git \
+            /tmp/hermes-agent
+          cd /tmp/hermes-agent
+          git fetch --depth 1 origin a31be48030f60383bf4c1d96ba46bd4b48430218
+          git checkout a31be48030f60383bf4c1d96ba46bd4b48430218
+          cd -
+          pip install -e /tmp/hermes-agent
 
-      - name: Install plugin
-        run: pip install -e .
+      - name: Install the bundled plugin into Hermes's plugin tree
+        # Required because the dashboard-auth route only mounts if the
+        # plugin.yaml is discoverable at plugins/dashboard_auth/cloudflare_access/.
+        # Tests run against the dashboard's app, which mounts routes at startup.
+        run: |
+          mkdir -p /tmp/hermes-agent/plugins/dashboard_auth/cloudflare_access
+          cp -r src/hermes_cloudflare_access/* \
+            /tmp/hermes-agent/plugins/dashboard_auth/cloudflare_access/
 
-      - name: Install test deps
-        run: pip install pytest pytest-asyncio
+      - name: Install plugin with test extras
+        # `.[test]` pulls in pytest, pytest-asyncio, build, ruff.
+        run: pip install -e ".[test]"
 
       - name: Run tests
         run: pytest tests/ -v
+
+      - name: Check for personal-data leaks in the built wheel
+        # Sanity check: the wheel METADATA must not contain @gmail, @users.noreply,
+        # or other real identifiers. The plugin ships a synthetic-JWT shim so
+        # the tests don't need a real Cloudflare team.
+        run: |
+          python -m build --wheel --outdir /tmp/hermes-cf-dist
+          METADATA=$(unzip -p /tmp/hermes-cf-dist/hermes_cloudflare_access-*.whl \
+            hermes_cloudflare_access-*.dist-info/METADATA)
+          if echo "$METADATA" | grep -E '@gmail|@users\.noreply|Nagarajan|ngserver|harshsana'; then
+            echo "::error::Personal data leak in built wheel"
+            exit 1
+          fi
+          echo "METADATA clean"
+
+      - name: Smoke-import check
+        # The plugin must import cleanly without crashing on a fresh
+        # hermes-agent install. Catches missing-dep regressions.
+        # Both import paths exist intentionally: the bundled path is
+        # what the running dashboard mounts; the package path is what
+        # `hermes_cloudflare_access` resolves to in user code. They're
+        # different module objects on disk (different file paths) so
+        # we don't assert identity — only that both import.
+        run: |
+          python -c "
+          from plugins.dashboard_auth.cloudflare_access import (
+              CloudflareAccessAuthProvider as BundledProvider,
+              verify_access_jwt,
+          )
+          from hermes_cloudflare_access import (
+              CloudflareAccessAuthProvider as PkgProvider,
+          )
+          # Different class objects (different on-disk paths) but
+          # same logical class. Verify the public surface matches.
+          assert BundledProvider.name == PkgProvider.name == 'cloudflare_access'
+          assert BundledProvider.display_name == PkgProvider.display_name
+          assert BundledProvider.supports_password == PkgProvider.supports_password
+          print('imports OK; both paths resolve to the same logical class')
+          "
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install ruff
+        run: pip install ruff
+      - name: Lint
+        run: |
+          ruff check src/ tests/
+          ruff format --check src/ tests/

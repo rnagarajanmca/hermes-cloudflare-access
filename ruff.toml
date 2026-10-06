@@ -1,0 +1,28 @@
+# Ruff config — kept aligned with the upstream hermes-agent style.
+# Loosened rules where the upstream style allows them, to avoid noisy
+# CI failures for trivial whitespace / line-length nits.
+
+line-length = 100
+target-version = "py310"
+
+[lint]
+# E501 (line too long) — handled by formatter when possible, ignored
+# otherwise. W191, E101 etc. are formatter territory.
+extend-select = [
+    "I",   # isort
+    "UP",  # pyupgrade
+]
+ignore = [
+    "E501",
+    "B008",  # function call in default argument — used in FastAPI patterns
+    "B904",  # raise-from — minor, will be tightened later
+]
+
+[lint.per-file-ignores]
+"tests/*" = [
+    "B011",  # asserts in tests are intentional
+]
+
+[format]
+quote-style = "double"
+indent-style = "space"

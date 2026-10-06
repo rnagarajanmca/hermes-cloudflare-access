@@ -59,10 +59,9 @@ import logging
 import os
 import secrets
 import time
-from typing import Any, Optional
+from typing import Any
 
 import httpx
-
 from hermes_cli.dashboard_auth import (
     DashboardAuthProvider,
     LoginStart,
@@ -77,9 +76,9 @@ logger = logging.getLogger(__name__)
 # Defaults
 # ---------------------------------------------------------------------------
 
-_DEFAULT_TTL_SECONDS = 12 * 60 * 60       # 12h
+_DEFAULT_TTL_SECONDS = 12 * 60 * 60  # 12h
 _REFRESH_TTL_SECONDS = 30 * 24 * 60 * 60  # 30d
-_JWKS_CACHE_TTL_SECONDS = 5 * 60          # 5 min
+_JWKS_CACHE_TTL_SECONDS = 5 * 60  # 5 min
 _HTTP_TIMEOUT_SECONDS = 10
 
 _SIG_LEN = hashlib.sha256().digest_size
@@ -118,11 +117,11 @@ class _JWKSCache:
                 resp = httpx.get(url, timeout=_HTTP_TIMEOUT_SECONDS)
                 resp.raise_for_status()
                 data = resp.json()
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 if self._keys:
                     logger.warning(
-                        "dashboard-auth-cf-access: JWKS refresh failed (%s); "
-                        "serving stale keys", exc,
+                        "dashboard-auth-cf-access: JWKS refresh failed (%s); serving stale keys",
+                        exc,
                     )
                     return self._keys
                 raise
@@ -167,7 +166,7 @@ def _verify_rs256(token: str, jwk: dict[str, Any]) -> dict[str, Any]:
     signature = _b64url_decode(parts[2])
 
     try:
-        from cryptography.hazmat.primitives import hashes, serialization
+        from cryptography.hazmat.primitives import hashes
         from cryptography.hazmat.primitives.asymmetric import padding
     except ImportError:
         raise RuntimeError(
@@ -177,9 +176,11 @@ def _verify_rs256(token: str, jwk: dict[str, Any]) -> dict[str, Any]:
 
     n_int = int.from_bytes(_b64url_decode(jwk["n"]), "big")
     e_int = int.from_bytes(_b64url_decode(jwk["e"]), "big")
-    pub_numbers = __import__(
-        "cryptography.hazmat.primitives.asymmetric.rsa", fromlist=["RSAPublicNumbers"]
-    ).RSAPublicNumbers(e_int, n_int).public_key()
+    pub_numbers = (
+        __import__("cryptography.hazmat.primitives.asymmetric.rsa", fromlist=["RSAPublicNumbers"])
+        .RSAPublicNumbers(e_int, n_int)
+        .public_key()
+    )
     pub_numbers.verify(
         signature,
         signing_input,
@@ -250,7 +251,7 @@ def _sign(payload: dict, secret: bytes) -> str:
     return base64.urlsafe_b64encode(raw + sig).decode()
 
 
-def _unsign(token: str, secret: bytes) -> Optional[dict]:
+def _unsign(token: str, secret: bytes) -> dict | None:
     try:
         blob = base64.urlsafe_b64decode(token.encode())
         if len(blob) <= _SIG_LEN:
@@ -260,7 +261,7 @@ def _unsign(token: str, secret: bytes) -> Optional[dict]:
         if not hmac.compare_digest(sig, expected):
             return None
         return json.loads(raw)
-    except Exception:
+    except (ValueError, TypeError, UnicodeDecodeError, json.JSONDecodeError):
         return None
 
 
@@ -330,7 +331,7 @@ class CloudflareAccessAuthProvider(DashboardAuthProvider):
 
     # ---- session lifecycle (stateless HMAC tokens) -------------------------
 
-    def verify_session(self, *, access_token: str) -> Optional[Session]:
+    def verify_session(self, *, access_token: str) -> Session | None:
         payload = _unsign(access_token, self._secret)
         if (
             payload is None
@@ -355,7 +356,6 @@ class CloudflareAccessAuthProvider(DashboardAuthProvider):
     def revoke_session(self, *, refresh_token: str) -> None:
         # Stateless — nothing to revoke.
         _ = refresh_token
-        return None
 
     # ---- internals ---------------------------------------------------------
 
@@ -411,7 +411,8 @@ def _load_config_cloudflare_access_section() -> dict:
     except Exception as exc:  # noqa: BLE001
         logger.debug(
             "dashboard-auth-cf-access: load_config() raised %s; "
-            "falling back to env-only configuration", exc,
+            "falling back to env-only configuration",
+            exc,
         )
         return {}
     section = cfg_get(cfg, "dashboard", "cloudflare_access", default=None)
@@ -426,9 +427,7 @@ def _resolve(env_name: str, cfg_section: dict, cfg_key: str) -> str:
 
 
 def _resolve_secret(cfg_section: dict) -> bytes:
-    raw = _resolve(
-        "HERMES_DASHBOARD_CF_ACCESS_SECRET", cfg_section, "secret"
-    )
+    raw = _resolve("HERMES_DASHBOARD_CF_ACCESS_SECRET", cfg_section, "secret")
     if not raw:
         logger.info(
             "dashboard-auth-cf-access: no 'secret' configured; generating a "
@@ -455,9 +454,7 @@ def register(ctx) -> None:
     section = _load_config_cloudflare_access_section()
     team = _resolve("HERMES_DASHBOARD_CF_ACCESS_TEAM", section, "team")
     aud = _resolve("HERMES_DASHBOARD_CF_ACCESS_AUD", section, "aud")
-    ttl_raw = _resolve(
-        "HERMES_DASHBOARD_CF_ACCESS_TTL_SECONDS", section, "ttl_seconds"
-    )
+    ttl_raw = _resolve("HERMES_DASHBOARD_CF_ACCESS_TTL_SECONDS", section, "ttl_seconds")
 
     if not team:
         LAST_SKIP_REASON = (
@@ -485,7 +482,10 @@ def register(ctx) -> None:
 
     try:
         provider = CloudflareAccessAuthProvider(
-            team=team, aud=aud, secret=secret, ttl_seconds=ttl,
+            team=team,
+            aud=aud,
+            secret=secret,
+            ttl_seconds=ttl,
         )
     except ValueError as exc:
         LAST_SKIP_REASON = f"CloudflareAccessAuthProvider construction failed: {exc}"
@@ -495,5 +495,6 @@ def register(ctx) -> None:
     ctx.register_dashboard_auth_provider(provider)
     logger.info(
         "dashboard-auth-cf-access: registered provider (team=%s, aud=%s...)",
-        team, aud[:12],
+        team,
+        aud[:12],
     )

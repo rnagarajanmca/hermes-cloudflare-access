@@ -18,6 +18,7 @@ environment. Install with::
 
 Or in a CI matrix where hermes-agent is on PYTHONPATH.
 """
+
 from __future__ import annotations
 
 import json
@@ -27,7 +28,6 @@ from typing import Any
 from unittest.mock import patch
 
 import pytest
-
 from fastapi.testclient import TestClient
 
 # hermes-agent modules — only available when hermes-agent is on PYTHONPATH
@@ -38,7 +38,6 @@ from hermes_cli.dashboard_auth import (
     list_providers,
     register_provider,
 )
-
 
 # ---------------------------------------------------------------------------
 # Synthetic JWT verification shim — substitute the real verify_access_jwt
@@ -55,13 +54,14 @@ def stub_jwt_verify():
     test can pick which claims to return by encoding the dict as the
     token. Saves us a real RS256 keypair.
     """
+
     def _fake(token: str, *, team: str, aud: str) -> dict[str, Any]:
         if not token.startswith("synthetic:"):
             raise ValueError("not a synthetic test token")
-        blob = token[len("synthetic:"):]
+        blob = token[len("synthetic:") :]
         try:
             claims = json.loads(blob)
-        except Exception as exc:
+        except json.JSONDecodeError as exc:
             raise ValueError(f"unparseable synthetic claims: {exc}")
         # Simulate the real verifier's claim checks.
         if claims.get("iss") != f"https://{team}.cloudflareaccess.com":
@@ -93,6 +93,7 @@ def stub_jwt_verify():
         "plugins.dashboard_auth.cloudflare_access",
     ]
     from contextlib import ExitStack
+
     with ExitStack() as stack:
         for mod in router_modules + package_modules:
             stack.enter_context(patch(f"{mod}.verify_access_jwt", _fake))
@@ -116,11 +117,13 @@ def hermes_home(tmp_path, monkeypatch):
 
 def _write_config(home, cfg: dict) -> None:
     import yaml
+
     (home / "config.yaml").write_text(yaml.safe_dump(cfg), encoding="utf-8")
 
 
-def _make_token(sub="u-1", email="user@example.com", team="example-corp",
-                aud="aud-tag", exp_delta=3600, **extra) -> str:
+def _make_token(
+    sub="u-1", email="user@example.com", team="example-corp", aud="aud-tag", exp_delta=3600, **extra
+) -> str:
     """Encode a synthetic JWT-shaped token for the stub verifier."""
     now = int(time.time())
     claims = {
@@ -148,6 +151,7 @@ def test_provider_skips_when_env_missing(hermes_home, monkeypatch):
     _write_config(hermes_home, {})
     import hermes_cli.plugins as plugins_mod
     from hermes_cli.plugins import discover_plugins
+
     with patch.object(plugins_mod, "_plugin_manager", None):
         discover_plugins(force=True)
     names = [p.name for p in list_providers()]
@@ -164,6 +168,7 @@ def test_provider_registers_with_env(hermes_home, monkeypatch):
     _write_config(hermes_home, {})
     import hermes_cli.plugins as plugins_mod
     from hermes_cli.plugins import discover_plugins
+
     with patch.object(plugins_mod, "_plugin_manager", None):
         discover_plugins(force=True)
     providers = list_providers()
@@ -186,6 +191,7 @@ def _register_test_provider(team="example-corp", aud="aud-tag"):
     from hermes_cloudflare_access import (
         CloudflareAccessAuthProvider,
     )
+
     clear_providers()
     p = CloudflareAccessAuthProvider(
         team=team,
