@@ -1,0 +1,8 @@
+name: cloudflare_access
+version: 0.1.0
+description: "Dashboard auth provider — Cloudflare Access (Zero Trust). Trusts the Cf-Access-Jwt-Assertion header (or CF_Authorization cookie) that Cloudflare's edge injects when a user passes an Access policy on the public hostname. The provider validates the RS256 JWT against the team's JWKS at https://<team>.cloudflareaccess.com/cdn-cgi/access/certs, checks the `aud` claim matches the configured Application Audience tag, and extracts the user's email/sub from the token claims. Session cookies are minted server-side the same way the bundled basic / nous providers do — once the user is in, they stay in until the cookie TTL. The Cloudflare Access policy is the user-facing auth; this plugin just translates the assertion into a Hermes session."
+author: hermes-cloudflare-access maintainers
+kind: backend
+requires_env:
+  - HERMES_DASHBOARD_CF_ACCESS_TEAM
+  - HERMES_DASHBOARD_CF_ACCESS_AUD

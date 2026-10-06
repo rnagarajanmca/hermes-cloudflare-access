@@ -1,0 +1,36 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install hermes-agent (test dependency)
+        run: |
+          git clone --depth 1 https://github.com/NousResearch/hermes-agent.git
+          pip install -e ./hermes-agent
+
+      - name: Install plugin
+        run: pip install -e .
+
+      - name: Install test deps
+        run: pip install pytest pytest-asyncio
+
+      - name: Run tests
+        run: pytest tests/ -v

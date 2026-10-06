@@ -1,0 +1,17 @@
+--- a/hermes_cli/dashboard_auth/middleware.py
++++ b/hermes_cli/dashboard_auth/middleware.py
+@@ -62,6 +62,14 @@ _GATE_PUBLIC_PREFIXES: tuple[str, ...] = (
+     "/ds-assets/",
+     "/fonts/",
+     "/fonts-terminal/",
++    # cloudflare_access dashboard auth plugin.
++    # Reads the Cf-Access-Jwt-Assertion header / CF_Authorization cookie
++    # (set by Cloudflare's edge) and mints a Hermes session. The route
++    # itself enforces auth by verifying the JWT signature + aud/iss/exp
++    # against the team JWKS before doing anything privileged, so adding
++    # it to the public list is safe — the gate is just bypassed so the
++    # plugin's own verifier can run.
++    "/api/plugins/cloudflare_access/",
+ )
+
+

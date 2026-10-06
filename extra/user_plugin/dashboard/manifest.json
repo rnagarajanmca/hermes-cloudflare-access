@@ -1,0 +1,9 @@
+{
+  "name": "cloudflare_access",
+  "label": "Cloudflare Access Auth",
+  "description": "Dashboard auth provider that trusts the Cf-Access-Jwt-Assertion header / CF_Authorization cookie set by Cloudflare Zero Trust. Routes mount under /api/plugins/cloudflare_access/ — the public path the dashboard-auth middleware allows the plugin to register its own callback. See the dashboard_auth/cloudflare_access/ plugin for the auth provider registration.",
+  "version": "0.1.0",
+  "entry": null,
+  "css": null,
+  "api": "plugin_api.py"
+}
