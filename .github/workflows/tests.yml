@@ -13,7 +13,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.10", "3.11", "3.12"]
+        # hermes-agent a31be48 requires Python >= 3.11, so the test
+        # matrix is constrained to the versions hermes-agent itself
+        # supports. hermes-cloudflare-access's pyproject lists
+        # python>=3.10 (the plugin's own minimum) but the test target
+        # is the dashboard app, which is bounded by hermes-agent.
+        python-version: ["3.11", "3.12"]
 
     steps:
       - uses: actions/checkout@v4
