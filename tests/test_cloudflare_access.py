@@ -158,7 +158,10 @@ def _mount_callback_router():
             if getattr(_r, "path", None) == "/{full_path:path}":
                 _catch_all_idx = _i
                 break
-        if _catch_all_idx is not None and web_server.app.routes[-1] is not web_server.app.routes[_catch_all_idx]:
+        if (
+            _catch_all_idx is not None
+            and web_server.app.routes[-1] is not web_server.app.routes[_catch_all_idx]
+        ):
             _new = web_server.app.routes.pop()
             web_server.app.routes.insert(_catch_all_idx, _new)
 
