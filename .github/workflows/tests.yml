@@ -36,16 +36,24 @@ jobs:
           cd -
           pip install -e /tmp/hermes-agent
 
-      - name: Install the dashboard plugin shim
-        # The dashboard plugin loader scans plugins/<name>/dashboard/manifest.json
-        # (NOT plugins/dashboard_auth/<name>/, which is the auth provider loader's
-        # path). Copy extra/user_plugin/dashboard/ to the right location.
-        # Without this, the FastAPI route at /api/plugins/cloudflare_access/
-        # never gets mounted and the callback tests 404.
+      - name: Install plugin into Hermes's plugin trees
+        # Two different plugin loaders in hermes-agent scan different paths:
+        #   * Dashboard plugin loader (routes at /api/plugins/<name>/)
+        #     scans plugins/<name>/dashboard/manifest.json
+        #   * Auth provider loader (registers the CloudflareAccessAuthProvider)
+        #     scans plugins/dashboard_auth/<name>/plugin.yaml
+        # Both must be present for the test suite to pass — the auth
+        # provider loads the JWT verifier / JWKS cache, the dashboard
+        # plugin mounts the FastAPI route that calls them.
         run: |
           mkdir -p /tmp/hermes-agent/plugins/cloudflare_access/dashboard
           cp extra/user_plugin/dashboard/* \
             /tmp/hermes-agent/plugins/cloudflare_access/dashboard/
+          mkdir -p /tmp/hermes-agent/plugins/dashboard_auth/cloudflare_access
+          cp src/hermes_cloudflare_access/__init__.py \
+             src/hermes_cloudflare_access/router.py \
+             src/hermes_cloudflare_access/plugin.yaml \
+             /tmp/hermes-agent/plugins/dashboard_auth/cloudflare_access/
 
       - name: Apply the middleware allowlist patch
         # The CI's fresh hermes-agent clone doesn't include the
