@@ -1,0 +1,29 @@
+name: Feature request
+description: Propose an enhancement to the plugin.
+title: Feature request
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: Tell us what you'd like the plugin to do, and how it would fit with what's already there.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What problem does this solve? What can you currently do that's awkward?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: How would the plugin behave differently? Sketch the API or config.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Any workarounds or other plugins you've looked at?
+    validations:
+      required: false

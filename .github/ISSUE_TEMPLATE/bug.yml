@@ -1,0 +1,54 @@
+name: Bug report
+description: File a bug with the plugin.
+title: Bug report
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for taking the time to file a bug. Please fill in the sections below.
+  - type: input
+    id: plugin_version
+    attributes:
+      label: Plugin version
+      description: Output of `pip show hermes-cloudflare-access | grep Version`
+      placeholder: 0.1.0
+    validations:
+      required: true
+  - type: input
+    id: hermes_version
+    attributes:
+      label: Hermes Agent version
+      description: Output of `python -c 'import hermes_cli; print(hermes_cli.__version__)'`
+    validations:
+      required: true
+  - type: input
+    id: python_version
+    attributes:
+      label: Python version
+      description: Output of `python --version`
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: What did you do? What did you expect? What happened?
+      placeholder: |
+        1. Configure plugin with team=... aud=...
+        2. Open https://dashboard.example.com
+        3. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Paste the relevant section of `~/.hermes/logs/dashboard.log` here.
+    validations:
+      required: false
+  - type: textarea
+    id: extras
+    attributes:
+      label: Anything else?
+    validations:
+      required: false

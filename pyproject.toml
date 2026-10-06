@@ -42,8 +42,10 @@ dependencies = [
 ]
 
 [project.urls]
-"Source" = "https://github.com/hermes-cloudflare-access/hermes-cloudflare-access"
-"Bug Tracker" = "https://github.com/hermes-cloudflare-access/hermes-cloudflare-access/issues"
+"Source" = "https://github.com/rnagarajanmca/hermes-cloudflare-access"
+"Bug Tracker" = "https://github.com/rnagarajanmca/hermes-cloudflare-access/issues"
+"Changelog" = "https://github.com/rnagarajanmca/hermes-cloudflare-access/blob/main/CHANGELOG.md"
+"Security" = "https://github.com/rnagarajanmca/hermes-cloudflare-access/blob/main/SECURITY.md"
 
 [tool.setuptools.packages.find]
 where = ["src"]

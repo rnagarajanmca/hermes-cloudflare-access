@@ -1,0 +1,19 @@
+name: Question
+description: Ask a usage question.
+title: Question
+body:
+  - type: markdown
+    attributes:
+      value: For usage questions that don't fit a bug or feature request.
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: What you've already tried
+    validations:
+      required: false
