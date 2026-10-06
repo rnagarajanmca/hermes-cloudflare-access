@@ -21,6 +21,8 @@ ignore = [
 [lint.per-file-ignores]
 "tests/*" = [
     "B011",  # asserts in tests are intentional
+    "BLE001",  # tests are short-lived; bare excepts in fixtures are OK if they log
+    "S110",  # `try/except/pass` in test fixtures is acceptable for "best-effort reset"
 ]
 
 [format]

@@ -21,11 +21,11 @@ Or in a CI matrix where hermes-agent is on PYTHONPATH.
 
 from __future__ import annotations
 
-import json
-import secrets
-import sys
-import time
 import importlib
+import json
+import logging
+import secrets
+import time
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
@@ -41,6 +41,8 @@ from hermes_cli.dashboard_auth import (
     list_providers,
     register_provider,
 )
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Synthetic JWT verification shim — substitute the real verify_access_jwt
@@ -151,11 +153,10 @@ def _mount_callback_router():
     # that may not have it yet. The plugin's route verifies the JWT before
     # doing anything privileged, so bypassing the gate for it is safe.
     from hermes_cli.dashboard_auth import middleware as _mw
+
     if target_prefix + "/" not in _mw._GATE_PUBLIC_PREFIXES:
         # tuple is immutable; rebuild with the cloudflare prefix added.
-        _mw._GATE_PUBLIC_PREFIXES = tuple(
-            list(_mw._GATE_PUBLIC_PREFIXES) + [target_prefix + "/"]
-        )
+        _mw._GATE_PUBLIC_PREFIXES = tuple(list(_mw._GATE_PUBLIC_PREFIXES) + [target_prefix + "/"])
 
     # (3) The plugin-runtime gate (``_plugin_api_runtime_gate`` in
     # ``hermes_cli.web_server``) 404s requests to disabled / un-enabled
@@ -163,17 +164,38 @@ def _mount_callback_router():
     # (the editable install maps to a CI-emulation hermes-agent copy
     # whose plugin enumeration may not include ours). The plugin's own
     # route does its own JWT verification, so letting the request
-    # through the runtime gate is safe.
+    # through the runtime gate is safe. Replace the gate's core body
+    # so /api/plugins/cloudflare_access/* passes through unconditionally.
     import hermes_cli.web_server as _ws
 
-    async def _passthrough_plugin_runtime_gate(request, call_next):
+    _gate_original = _ws._plugin_api_runtime_gate
+
+    async def _patched_plugin_runtime_gate(request, call_next):
         if request.url.path.startswith(target_prefix):
             return await call_next(request)
-        return await _ws._plugin_api_runtime_gate.__wrapped__(request, call_next)
+        return await _gate_original(request, call_next)
 
-    # Stash the original so the wrapper can defer to it for non-cloudflare paths.
-    _ws._plugin_api_runtime_gate.__wrapped__ = _ws._plugin_api_runtime_gate
-    _ws._plugin_api_runtime_gate = _passthrough_plugin_runtime_gate
+    _ws._plugin_api_runtime_gate = _patched_plugin_runtime_gate
+
+    # FastAPI's middleware is registered against the *function object* at
+    # decoration time. The decorator captured the original; reassigning
+    # the module attribute alone is a no-op for the registered middleware.
+    # Walk the registered user_middleware and swap the dispatch reference.
+    try:
+        for m in _ws.app.user_middleware:
+            dispatch = getattr(m, "dispatch", None)
+            if dispatch is _gate_original:
+                m.dispatch = _patched_plugin_runtime_gate
+    except (AttributeError, TypeError) as exc:
+        logger.debug("middleware dispatch swap skipped: %s", exc)
+    # Starlette also caches a built middleware stack on the app; invalidate
+    # so the next request rebuilds it with the patched dispatch.
+    for attr in ("middleware_stack",):
+        if hasattr(_ws.app, attr):
+            try:
+                setattr(_ws.app, attr, None)
+            except (AttributeError, TypeError) as exc:
+                logger.debug("middleware_stack reset skipped: %s", exc)
 
 
 def _stage_plugin_into(home: Path) -> None:
@@ -199,6 +221,18 @@ def _stage_plugin_into(home: Path) -> None:
             },
         },
     )
+    # The dashboard-plugin loader caches its scan result the first time
+    # web_server is imported, against whatever HERMES_HOME was at that
+    # point (usually the platform default). Force a rescan so the cache
+    # reflects the new HERMES_HOME + newly-staged plugin dir before the
+    # test runs any request. The cache is per-process; rescan is cheap.
+    from hermes_cli.web_server import _get_dashboard_plugins, _mount_plugin_api_routes
+
+    _get_dashboard_plugins(force_rescan=True)
+    # Also remount the plugin API routes — the first mount happened at
+    # web_server import time against the empty HERMES_HOME, so without
+    # this the cloudflare_access routes wouldn't be present at all.
+    _mount_plugin_api_routes()
 
 
 @pytest.fixture(autouse=True)
@@ -214,15 +248,6 @@ def _hermes_home_with_plugin(tmp_path, monkeypatch):
     home.mkdir()
     monkeypatch.setenv("HERMES_HOME", str(home))
     _stage_plugin_into(home)
-    print(f"[FIXTURE-DEFAULT] staged plugin into {home}", file=sys.stderr)
-    print(f"[FIXTURE-DEFAULT] config.yaml exists: {(home / 'config.yaml').exists()}, size: {(home / 'config.yaml').stat().st_size if (home / 'config.yaml').exists() else 'N/A'}", file=sys.stderr)
-    print(f"[FIXTURE-DEFAULT] config.yaml content: {(home / 'config.yaml').read_text()}", file=sys.stderr)
-    from hermes_cli.plugins_cmd import _get_enabled_set, _get_disabled_set
-    print(f"[FIXTURE-DEFAULT] enabled_set: {_get_enabled_set()}", file=sys.stderr)
-    print(f"[FIXTURE-DEFAULT] disabled_set: {_get_disabled_set()}", file=sys.stderr)
-    from hermes_cli.web_server import _get_dashboard_plugins
-    plugins = _get_dashboard_plugins(force_rescan=True)
-    print(f"[FIXTURE-DEFAULT] dashboard plugins: {[(p['name'], p.get('source')) for p in plugins]}", file=sys.stderr)
     yield
 
 
