@@ -1,6 +1,7 @@
 <p align="center">
   <a href="https://github.com/rnagarajanmca/hermes-cloudflare-access/releases/tag/v0.1.0"><img src="https://img.shields.io/github/v/release/rnagarajanmca/hermes-cloudflare-access?style=flat-square" alt="Release"></a>
   <a href="https://github.com/rnagarajanmca/hermes-cloudflare-access/actions/workflows/tests.yml"><img src="https://img.shields.io/github/actions/workflow-status/rnagarajanmca/hermes-cloudflare-access/tests.yml?branch=main&style=flat-square" alt="CI"></a>
+  <a href="https://pypi.org/project/hermes-cloudflare-access/"><img src="https://img.shields.io/pypi/v/hermes-cloudflare-access?style=flat-square" alt="PyPI"></a>
   <a href="https://github.com/rnagarajanmca/hermes-cloudflare-access/blob/main/LICENSE"><img src="https://img.shields.io/github/license/rnagarajanmca/hermes-cloudflare-access?style=flat-square" alt="License: MIT"></a>
   <a href="https://github.com/rnagarajanmca/hermes-cloudflare-access/stargazers"><img src="https://img.shields.io/github/stars/rnagarajanmca/hermes-cloudflare-access?style=flat-square" alt="Stars"></a>
   <a href="https://github.com/rnagarajanmca/hermes-cloudflare-access/issues"><img src="https://img.shields.io/github/issues/rnagarajanmca/hermes-cloudflare-access?style=flat-square" alt="Issues"></a>

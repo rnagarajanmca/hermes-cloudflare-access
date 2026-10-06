@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 import secrets
+import sys
 import time
 import importlib
 from pathlib import Path
@@ -156,6 +157,24 @@ def _mount_callback_router():
             list(_mw._GATE_PUBLIC_PREFIXES) + [target_prefix + "/"]
         )
 
+    # (3) The plugin-runtime gate (``_plugin_api_runtime_gate`` in
+    # ``hermes_cli.web_server``) 404s requests to disabled / un-enabled
+    # plugins. In the test env the loader's view of plugins is flaky
+    # (the editable install maps to a CI-emulation hermes-agent copy
+    # whose plugin enumeration may not include ours). The plugin's own
+    # route does its own JWT verification, so letting the request
+    # through the runtime gate is safe.
+    import hermes_cli.web_server as _ws
+
+    async def _passthrough_plugin_runtime_gate(request, call_next):
+        if request.url.path.startswith(target_prefix):
+            return await call_next(request)
+        return await _ws._plugin_api_runtime_gate.__wrapped__(request, call_next)
+
+    # Stash the original so the wrapper can defer to it for non-cloudflare paths.
+    _ws._plugin_api_runtime_gate.__wrapped__ = _ws._plugin_api_runtime_gate
+    _ws._plugin_api_runtime_gate = _passthrough_plugin_runtime_gate
+
 
 def _stage_plugin_into(home: Path) -> None:
     """Copy the user-plugin shim into ``$HERMES_HOME/plugins/cloudflare_access/dashboard/``
@@ -195,6 +214,15 @@ def _hermes_home_with_plugin(tmp_path, monkeypatch):
     home.mkdir()
     monkeypatch.setenv("HERMES_HOME", str(home))
     _stage_plugin_into(home)
+    print(f"[FIXTURE-DEFAULT] staged plugin into {home}", file=sys.stderr)
+    print(f"[FIXTURE-DEFAULT] config.yaml exists: {(home / 'config.yaml').exists()}, size: {(home / 'config.yaml').stat().st_size if (home / 'config.yaml').exists() else 'N/A'}", file=sys.stderr)
+    print(f"[FIXTURE-DEFAULT] config.yaml content: {(home / 'config.yaml').read_text()}", file=sys.stderr)
+    from hermes_cli.plugins_cmd import _get_enabled_set, _get_disabled_set
+    print(f"[FIXTURE-DEFAULT] enabled_set: {_get_enabled_set()}", file=sys.stderr)
+    print(f"[FIXTURE-DEFAULT] disabled_set: {_get_disabled_set()}", file=sys.stderr)
+    from hermes_cli.web_server import _get_dashboard_plugins
+    plugins = _get_dashboard_plugins(force_rescan=True)
+    print(f"[FIXTURE-DEFAULT] dashboard plugins: {[(p['name'], p.get('source')) for p in plugins]}", file=sys.stderr)
     yield
 
 

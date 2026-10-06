@@ -48,9 +48,9 @@ test = [
     "build>=1.0",
     "ruff>=0.4",
 ]
-dev = [
-    "hermes-agent @ git+https://github.com/NousResearch/hermes-agent.git@a31be48030f60383bf4c1d96ba46bd4b48430218",
-]
+# Note: a `dev` extra for installing against a local hermes-agent checkout is
+# intentionally NOT published — PEP 508 forbids git+ direct references in
+# uploaded metadata. See CONTRIBUTING.md for the local dev install procedure.
 
 [project.urls]
 "Source" = "https://github.com/rnagarajanmca/hermes-cloudflare-access"
