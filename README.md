@@ -152,6 +152,8 @@ The login page at `/auth/login` will show a **Sign in with Cloudflare Access** b
 7. Callback reads the JWT, verifies the RS256 signature against the team JWKS at `https://<team>.cloudflareaccess.com/cdn-cgi/access/certs`, checks `aud` matches config, mints a Hermes session.
 8. 302 to `/`. Logged in.
 
+![Hermes dashboard login — Sign in with Cloudflare Access](assets/login-flow.png)
+
 ## Security
 
 - **JWKS cache: 5 minutes.** Cloudflare rotates keys slowly. The cache avoids a network roundtrip on every request. On refresh failure the previous keys are served (fail-open on stale).
