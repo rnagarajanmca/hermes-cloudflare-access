@@ -137,6 +137,11 @@ def _mount_callback_router():
     callback_path = f"{target_prefix}/callback"
 
     # (1) Mount the router if not already mounted by the dashboard loader.
+    # IMPORTANT: include_router appends at the END of app.routes. The host
+    # hermes-agent registers a catch-all SPA route at ``/{full_path:path}`` as
+    # one of the last entries, which would otherwise shadow our plugin route
+    # and turn every request into a 404. Detect the catch-all and insert our
+    # routes immediately before it so Starlette's route matcher sees us first.
     for route in web_server.app.routes:
         if getattr(route, "path", None) == callback_path:
             break
@@ -146,6 +151,16 @@ def _mount_callback_router():
         except ImportError:
             from plugins.dashboard_auth.cloudflare_access.router import router as _router
         web_server.app.include_router(_router, prefix=target_prefix)
+        # Reorder: pop the just-appended IncludedRouter and insert before the
+        # ``/{full_path:path}`` catch-all (if present).
+        _catch_all_idx = None
+        for _i, _r in enumerate(web_server.app.routes):
+            if getattr(_r, "path", None) == "/{full_path:path}":
+                _catch_all_idx = _i
+                break
+        if _catch_all_idx is not None and web_server.app.routes[-1] is not web_server.app.routes[_catch_all_idx]:
+            _new = web_server.app.routes.pop()
+            web_server.app.routes.insert(_catch_all_idx, _new)
 
     # (2) Ensure the dashboard auth gate's public-prefix list includes the
     # plugin's path. The upstream patch lands in the system hermes-agent
@@ -160,42 +175,46 @@ def _mount_callback_router():
 
     # (3) The plugin-runtime gate (``_plugin_api_runtime_gate`` in
     # ``hermes_cli.web_server``) 404s requests to disabled / un-enabled
-    # plugins. In the test env the loader's view of plugins is flaky
-    # (the editable install maps to a CI-emulation hermes-agent copy
-    # whose plugin enumeration may not include ours). The plugin's own
-    # route does its own JWT verification, so letting the request
-    # through the runtime gate is safe. Replace the gate's core body
-    # so /api/plugins/cloudflare_access/* passes through unconditionally.
+    # plugins. The gate decides via ``_get_dashboard_plugins()`` (cached)
+    # and ``plugins_cmd._get_enabled_set()`` / ``_get_disabled_set()``,
+    # so we patch those to report our plugin as enabled. This matches the
+    # pattern used by ``tests/hermes_cli/test_plugin_runtime_disable_gate.py``
+    # in the upstream hermes-agent test suite — far more reliable than
+    # swapping the registered middleware dispatch (which Starlette captured
+    # at decoration time and ignores module-attribute reassignment).
+    import hermes_cli.plugins_cmd as _pc
     import hermes_cli.web_server as _ws
 
-    _gate_original = _ws._plugin_api_runtime_gate
+    _get_dashboard_plugins_original = _ws._get_dashboard_plugins
+    _get_enabled_set_original = _pc._get_enabled_set
+    _get_disabled_set_original = _pc._get_disabled_set
 
-    async def _patched_plugin_runtime_gate(request, call_next):
-        if request.url.path.startswith(target_prefix):
-            return await call_next(request)
-        return await _gate_original(request, call_next)
+    def _fake_dashboard_plugins(force_rescan: bool = False) -> list:
+        return [
+            {
+                "name": "cloudflare_access",
+                "label": "Cloudflare Access",
+                "description": "Dashboard auth provider — Cloudflare Access",
+                "icon": "Shield",
+                "version": "0.1.0",
+                "tab": {"path": "/cloudflare_access"},
+                "slots": [],
+                "entry": "dist/index.js",
+                "has_api": True,
+                "source": "user",
+                "_dir": "/tmp/hermes-test/plugins/cloudflare_access",
+            }
+        ]
 
-    _ws._plugin_api_runtime_gate = _patched_plugin_runtime_gate
+    _ws._get_dashboard_plugins = _fake_dashboard_plugins
+    _pc._get_enabled_set = lambda: {"cloudflare_access"}
+    _pc._get_disabled_set = lambda: set()
 
-    # FastAPI's middleware is registered against the *function object* at
-    # decoration time. The decorator captured the original; reassigning
-    # the module attribute alone is a no-op for the registered middleware.
-    # Walk the registered user_middleware and swap the dispatch reference.
-    try:
-        for m in _ws.app.user_middleware:
-            dispatch = getattr(m, "dispatch", None)
-            if dispatch is _gate_original:
-                m.dispatch = _patched_plugin_runtime_gate
-    except (AttributeError, TypeError) as exc:
-        logger.debug("middleware dispatch swap skipped: %s", exc)
-    # Starlette also caches a built middleware stack on the app; invalidate
-    # so the next request rebuilds it with the patched dispatch.
-    for attr in ("middleware_stack",):
-        if hasattr(_ws.app, attr):
-            try:
-                setattr(_ws.app, attr, None)
-            except (AttributeError, TypeError) as exc:
-                logger.debug("middleware_stack reset skipped: %s", exc)
+    yield
+
+    _ws._get_dashboard_plugins = _get_dashboard_plugins_original
+    _pc._get_enabled_set = _get_enabled_set_original
+    _pc._get_disabled_set = _get_disabled_set_original
 
 
 def _stage_plugin_into(home: Path) -> None:
